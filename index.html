@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Field Task Tracker</title>
+<style>
+  :root{
+    --navy:#0F2A3F;
+    --navy-2:#173C57;
+    --amber:#C97A1B;
+    --amber-bg:#FBEBD6;
+    --green:#1E7A4C;
+    --green-bg:#E1F3E8;
+    --grey:#6B7580;
+    --grey-bg:#EEF0F2;
+    --blue:#2361A6;
+    --blue-bg:#E3EDF7;
+    --paper:#F6F5F1;
+    --ink:#152431;
+    --line:#DADFE3;
+    --radius:10px;
+    font-size:16px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  header.app{
+    background:var(--navy); color:#fff; padding:16px 18px;
+    display:flex; align-items:center; justify-content:space-between;
+    position:sticky; top:0; z-index:10;
+  }
+  header.app .brand{display:flex; align-items:center; gap:10px;}
+  header.app .brand .tag{
+    width:10px;height:10px;border-radius:2px;background:var(--amber);
+    transform:rotate(45deg);
+  }
+  header.app h1{font-size:17px; margin:0; font-weight:700; letter-spacing:.2px;}
+  header.app .who{font-size:12px; opacity:.75;}
+  header.app button.logout{
+    background:transparent; color:#fff; border:1px solid rgba(255,255,255,.35);
+    border-radius:8px; padding:6px 10px; font-size:12px; cursor:pointer;
+  }
+
+  #login-screen, #dashboard-gate{
+    max-width:380px; margin:12vh auto 0; background:#fff; padding:32px 26px;
+    border-radius:14px; box-shadow:0 1px 3px rgba(15,42,63,.08), 0 8px 24px rgba(15,42,63,.06);
+  }
+  #login-screen .tagmark, #dashboard-gate .tagmark{width:14px;height:14px;background:var(--amber);border-radius:3px;transform:rotate(45deg);margin:0 auto 18px;}
+  #login-screen h1, #dashboard-gate h1{text-align:center; font-size:19px; color:var(--navy); margin:0 0 4px;}
+  #login-screen p.sub, #dashboard-gate p.sub{text-align:center; color:var(--grey); font-size:13px; margin:0 0 24px;}
+  label{display:block; font-size:12px; font-weight:600; color:var(--navy-2); margin:14px 0 6px; text-transform:uppercase; letter-spacing:.4px;}
+  select, input[type=text], input[type=password], textarea{
+    width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:8px;
+    font-size:15px; background:#fff; color:var(--ink); font-family:inherit;
+  }
+  select:focus, input:focus, textarea:focus{outline:2px solid var(--blue); outline-offset:1px;}
+  button.primary{
+    width:100%; margin-top:20px; background:var(--navy); color:#fff; border:none;
+    padding:13px; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer;
+  }
+  button.primary:active{background:var(--navy-2);}
+  button.ghost{
+    width:100%; margin-top:10px; background:transparent; color:var(--navy-2);
+    border:1.5px solid var(--line); padding:12px; border-radius:8px;
+    font-size:14px; font-weight:600; cursor:pointer;
+  }
+  button.ghost:active{background:var(--grey-bg);}
+  .auth-error{color:#B3261E; font-size:13px; margin-top:12px; text-align:center; display:none;}
+
+  main{max-width:720px; margin:0 auto; padding:14px 14px 60px;}
+  #dashboard-main{max-width:none; width:100%; padding:20px 28px 60px; box-sizing:border-box;}
+  .dash-top-row{display:grid; grid-template-columns:repeat(auto-fit, minmax(320px,1fr)); gap:16px;}
+  .dash-top-row .dash-card{margin-bottom:0;}
+  .dash-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(380px,1fr)); gap:16px; align-items:start;}
+  .dash-grid .dash-card{margin-bottom:0;}
+  .role-banner{
+    font-size:12.5px; color:var(--grey); padding:10px 4px 4px;
+  }
+  .filters{display:flex; gap:8px; overflow-x:auto; padding:8px 0 14px; -webkit-overflow-scrolling:touch;}
+  .filters button{
+    flex:0 0 auto; border:1px solid var(--line); background:#fff; color:var(--navy-2);
+    padding:7px 13px; border-radius:20px; font-size:13px; cursor:pointer;
+  }
+  .filters button.active{background:var(--navy); color:#fff; border-color:var(--navy);}
+
+  .tabs{display:flex; gap:6px; overflow-x:auto; padding:14px 0 0; -webkit-overflow-scrolling:touch; border-bottom:1px solid var(--line);}
+  .tabs button{
+    flex:0 0 auto; border:none; background:transparent; color:var(--grey);
+    padding:10px 4px 12px; margin-right:16px; font-size:14.5px; font-weight:600; cursor:pointer;
+    border-bottom:2.5px solid transparent; display:flex; align-items:center; gap:6px;
+  }
+  .tabs button .count{
+    background:var(--grey-bg); color:var(--navy-2); font-size:11px; font-weight:700;
+    border-radius:10px; padding:1px 7px;
+  }
+  .tabs button.active{color:var(--navy); border-bottom-color:var(--amber);}
+  .tabs button.active .count{background:var(--navy); color:#fff;}
+
+  .task-card{
+    background:#fff; border-radius:var(--radius); padding:14px 16px; margin-bottom:10px;
+    border:1px solid var(--line); box-shadow:0 1px 2px rgba(15,42,63,.04);
+    cursor:pointer;
+  }
+  .task-card .top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
+  .task-card .merchant{font-weight:700; font-size:14.5px; color:var(--ink); line-height:1.3;}
+  .task-card .meta{font-size:12.5px; color:var(--grey); margin-top:3px;}
+  .status-chip{
+    font-size:11px; font-weight:700; padding:4px 9px; border-radius:20px; white-space:nowrap;
+    text-transform:uppercase; letter-spacing:.3px;
+  }
+  .status-Pending{background:var(--amber-bg); color:var(--amber);}
+  .status-Completed{background:var(--green-bg); color:var(--green);}
+  .status-Unassigned{background:var(--grey-bg); color:var(--grey);}
+  .status-InProgress{background:var(--blue-bg); color:var(--blue);}
+  .task-card .bottom{display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:var(--grey);}
+  .delay-flag{color:#B3261E; font-weight:700;}
+
+  .empty{text-align:center; color:var(--grey); padding:60px 20px; font-size:14px;}
+
+  /* Dashboard view */
+  .dash-card{background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 16px; margin-bottom:16px; box-shadow:0 1px 3px rgba(15,42,63,.05);}
+  .dash-section-title{font-size:13px; font-weight:700; color:var(--navy-2); text-transform:uppercase; letter-spacing:.5px; margin:0 0 14px; display:flex; align-items:center; gap:8px;}
+  .dash-section-title .swatch{width:8px; height:8px; border-radius:2px; background:var(--amber); transform:rotate(45deg); flex:0 0 auto;}
+  .dash-hint{font-size:12px; color:var(--grey); margin:-8px 0 14px;}
+
+  .stat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px;}
+  .stat-tile{
+    background:#FBFBFA; border:1px solid var(--line); border-left:4px solid var(--navy);
+    border-radius:8px; padding:12px 14px;
+  }
+  .stat-tile .label{font-size:10.5px; color:var(--grey); text-transform:uppercase; letter-spacing:.3px; margin-bottom:6px; font-weight:600;}
+  .stat-tile .value{font-size:21px; font-weight:800; color:var(--navy); line-height:1.15;}
+  .stat-tile.c-navy{border-left-color:var(--navy);}
+  .stat-tile.c-green{border-left-color:var(--green);}
+  .stat-tile.c-amber{border-left-color:var(--amber);}
+  .stat-tile.c-blue{border-left-color:var(--blue);}
+  .stat-tile.c-grey{border-left-color:var(--grey);}
+  .stat-tile.c-red{border-left-color:#B3261E;}
+
+  .dash-table-wrap{overflow-x:auto; border-radius:10px; border:1px solid var(--line); margin:0 -2px;}
+  table.dash-table{width:100%; border-collapse:collapse; background:#fff; font-size:13px; white-space:nowrap;}
+  table.dash-table th{background:var(--grey-bg); color:var(--navy-2); text-align:left; padding:9px 12px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; position:sticky; top:0;}
+  table.dash-table td{padding:9px 12px; border-top:1px solid var(--line); color:var(--ink);}
+  table.dash-table tr:nth-child(even) td{background:#FAFAF8;}
+  .pct-badge{display:inline-block; padding:3px 10px; border-radius:20px; font-size:11.5px; font-weight:700; white-space:nowrap;}
+  .pct-green{background:var(--green-bg); color:var(--green);}
+  .pct-amber{background:var(--amber-bg); color:var(--amber);}
+  .pct-red{background:#FBE4E1; color:#B3261E;}
+  .pct-grey{background:var(--grey-bg); color:var(--grey);}
+  .dash-subgroup{margin-bottom:18px;}
+  .dash-subgroup:last-child{margin-bottom:0;}
+  .dash-subtitle{
+    font-size:12.5px; font-weight:700; color:var(--navy); margin:0 0 8px;
+    padding-bottom:6px; border-bottom:1.5px solid var(--line); display:flex; align-items:center; justify-content:space-between;
+  }
+  .dash-subtitle .count{font-size:11px; font-weight:600; color:var(--grey); text-transform:none; letter-spacing:0;}
+
+  /* Modal */
+  #modal-bg{
+    display:none; position:fixed; inset:0; background:rgba(15,36,54,.45); z-index:20;
+    align-items:flex-end; justify-content:center;
+  }
+  #modal{
+    background:#fff; width:100%; max-width:480px; border-radius:16px 16px 0 0;
+    padding:22px 20px 26px; max-height:88vh; overflow-y:auto;
+  }
+  @media (min-width:560px){
+    #modal-bg{align-items:center;}
+    #modal{border-radius:16px;}
+  }
+  #modal h2{font-size:17px; margin:0 0 2px; color:var(--navy);}
+  #modal .addr{font-size:13px; color:var(--grey); margin-bottom:16px;}
+  #modal .field-row{display:flex; gap:8px; font-size:12.5px; color:var(--navy-2); margin:6px 0;}
+  .status-options{display:flex; gap:8px; margin-top:6px; flex-wrap:wrap;}
+  .status-options button{
+    flex:1; min-width:90px; padding:10px 6px; border-radius:8px; border:1.5px solid var(--line);
+    background:#fff; font-size:13px; font-weight:600; cursor:pointer; color:var(--grey);
+  }
+  .status-options button.selected{border-color:var(--navy); background:var(--navy); color:#fff;}
+  #modal-actions{display:flex; gap:10px; margin-top:20px;}
+  #modal-actions button{flex:1; padding:12px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; border:none;}
+  #cancel-btn{background:var(--grey-bg); color:var(--ink);}
+  #save-btn{background:var(--navy); color:#fff;}
+  #assign-select{margin-top:6px;}
+  #modal-msg{font-size:12.5px; margin-top:10px; text-align:center;}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="tagmark"></div>
+  <h1>Field Task Tracker</h1>
+  <p class="sub">POS &amp; Non-POS breakdown &amp; installation updates</p>
+  <label for="login-name">Your name</label>
+  <select id="login-name"></select>
+  <button class="primary" onclick="doLogin()">Log in</button>
+  <button class="ghost" onclick="showDashboardGate()">View Dashboard</button>
+  <div id="login-error" class="auth-error"></div>
+</div>
+
+<div id="dashboard-gate" style="display:none;">
+  <div class="tagmark"></div>
+  <h1>Dashboard</h1>
+  <p class="sub">Enter the dashboard password to continue</p>
+  <label for="dashboard-password">Password</label>
+  <input type="password" id="dashboard-password" placeholder="••••••••" onkeydown="if(event.key==='Enter') viewDashboard()">
+  <button class="primary" onclick="viewDashboard()">View Dashboard</button>
+  <button class="ghost" onclick="backToLogin()">Back</button>
+  <div id="dashboard-gate-error" class="auth-error"></div>
+</div>
+
+<div id="dashboard-view" style="display:none;">
+  <header class="app">
+    <div class="brand">
+      <div class="tag"></div>
+      <div><h1>Dashboard</h1></div>
+    </div>
+    <button class="logout" onclick="backToLogin()">Close</button>
+  </header>
+  <main id="dashboard-main">
+    <div class="dash-top-row">
+      <div class="dash-card">
+        <div class="dash-section-title"><span class="swatch"></span>Overall Summary</div>
+        <div class="stat-grid" id="dash-overall"></div>
+      </div>
+
+      <div class="dash-card">
+        <div class="dash-section-title"><span class="swatch"></span>Today</div>
+        <div class="dash-hint">Refreshes automatically every ~10 minutes.</div>
+        <div class="stat-grid" id="dash-daily"></div>
+      </div>
+    </div>
+
+    <div class="dash-grid">
+      <div class="dash-card">
+        <div class="dash-section-title"><span class="swatch"></span>By Category</div>
+        <div id="dash-category"></div>
+      </div>
+
+      <div class="dash-card">
+        <div class="dash-section-title"><span class="swatch"></span>By Tech Lead</div>
+        <div id="dash-techlead"></div>
+      </div>
+
+      <div class="dash-card">
+        <div class="dash-section-title"><span class="swatch"></span>By Technician</div>
+        <div id="dash-technician"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="app" style="display:none;">
+  <header class="app">
+    <div class="brand">
+      <div class="tag"></div>
+      <div>
+        <h1>Task Tracker</h1>
+        <div class="who" id="who-label"></div>
+      </div>
+    </div>
+    <button class="logout" onclick="logout()">Log out</button>
+  </header>
+  <main>
+    <div class="tabs" id="cat-tabs"></div>
+    <div class="filters" id="filters"></div>
+    <div id="task-list"></div>
+  </main>
+</div>
+
+<div id="modal-bg" onclick="if(event.target===this) closeModal()">
+  <div id="modal">
+    <h2 id="modal-title"></h2>
+    <div class="addr" id="modal-addr"></div>
+    <div class="field-row"><span>Category:</span><span id="modal-cat"></span></div>
+    <div class="field-row"><span>Machine type:</span><span id="modal-machine"></span></div>
+    <div class="field-row"><span>Ref:</span><span id="modal-ref"></span></div>
+    <div class="field-row"><span>Tech Lead:</span><span id="modal-lead"></span></div>
+    <div class="field-row" id="modal-tech-row"><span>Technician:</span><span id="modal-tech"></span></div>
+
+    <div id="assign-block" style="display:none;">
+      <label for="assign-select">Allocate technician</label>
+      <select id="assign-select"></select>
+    </div>
+
+    <label>Status</label>
+    <div class="status-options" id="status-options"></div>
+
+    <label for="notes-input">Add a note (reason for delay, parts needed, etc.)</label>
+    <textarea id="notes-input" rows="3" placeholder="Optional note..."></textarea>
+
+    <div id="modal-actions">
+      <button id="cancel-btn" onclick="closeModal()">Cancel</button>
+      <button id="save-btn" onclick="saveTask()">Save update</button>
+    </div>
+    <div id="modal-msg"></div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   CONFIG — paste your Apps Script Web App URL here
+   ========================================================= */
+const API_URL = "https://script.google.com/macros/s/AKfycby7EqEuGUsgMm9kj2FpeocHKUVYpci265Tk0wON0ScqRdK450-tFSloXXal5QiXeZ9K2w/exec";
+
+/* =========================================================
+   Static name list for the login dropdown.
+   Pulled once from Config sheet — keep this in sync, or
+   swap for a live fetch on page load if you prefer.
+   ========================================================= */
+// Tech leads only — this is the login dropdown now that technician logins
+// are disabled server-side. Keep in sync with Config rows 3-9.
+const LEAD_NAMES = [
+  "ANUSHKA","ASANKA SHANAKA","CHATHURANGA","COLOMBAGE","KRISHAN","RANJAN","SADDASENA"
+];
+
+// Technicians — used only for the "Allocate technician" dropdown inside a
+// task, not for login. Keep in sync with Config rows 14+.
+const TECH_NAMES = [
+  "Ajantha","Arham","Asanka","Bharatha","Buddika","Chalana","Damith","Danushka","Fawdan",
+  "Fowser","Hashan","Indunil","Lalith","Liyanage","Mahesh Chanaka","Nalaka Hashan","Nilantha",
+  "Pasan","Rasika","Ranjith","Rishny","Roshan","Sajip","Sanoj","Sivapalan","Thathsara"
+];
+
+let SESSION = null; // {role, name, techLead/locations}
+let TASKS = [];
+let CURRENT_FILTER = 'All';
+
+/* Tabs split tasks by SubCategory so POS installs, breakdowns, and service
+   agreements don't all sit in one long mixed list. Keyed on the exact
+   SubCategory value coming from the sheet — update here if a SubCategory
+   name changes or a new one is added. */
+const TAB_DEFS = [
+  { key: 'New Installation', label: 'POS' },
+  { key: 'Breakdown', label: 'Breakdown' },
+  { key: 'Service Agreement', label: 'Service Agreements' }
+];
+let CURRENT_TAB = TAB_DEFS[0].key;
+let ACTIVE_TASK = null;
+
+function populateNameDropdown(){
+  const sel = document.getElementById('login-name');
+  const leadGroup = document.createElement('optgroup');
+  leadGroup.label = 'Tech Leads';
+  LEAD_NAMES.forEach(n=>{
+    const opt = document.createElement('option');
+    opt.value = n; opt.textContent = n;
+    leadGroup.appendChild(opt);
+  });
+  sel.appendChild(leadGroup);
+
+  const techGroup = document.createElement('optgroup');
+  techGroup.label = 'Technicians';
+  TECH_NAMES.forEach(n=>{
+    const opt = document.createElement('option');
+    opt.value = n; opt.textContent = n;
+    techGroup.appendChild(opt);
+  });
+  sel.appendChild(techGroup);
+}
+populateNameDropdown();
+
+async function api(action, params={}, method='GET', body=null){
+  let url = API_URL + '?action=' + action;
+  Object.keys(params).forEach(k=> url += '&'+k+'='+encodeURIComponent(params[k]));
+  const opts = { method };
+  if (method === 'POST'){
+    opts.headers = { 'Content-Type': 'text/plain' }; // avoids CORS preflight on Apps Script
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(url, opts);
+  return res.json();
+}
+
+async function doLogin(){
+  const name = document.getElementById('login-name').value;
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+  try{
+    const res = await api('login', { name });
+    if (!res.ok){ errEl.textContent = res.error || 'Login failed'; errEl.style.display='block'; return; }
+    SESSION = res;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('who-label').textContent =
+      SESSION.name + ' · ' + (SESSION.role === 'lead' ? 'Tech Lead' : 'Technician');
+    loadTasks();
+  }catch(e){
+    errEl.textContent = 'Could not reach the server. Check your connection.';
+    errEl.style.display = 'block';
+  }
+}
+
+function logout(){
+  SESSION = null; TASKS = [];
+  document.getElementById('login-screen').style.display = 'block';
+  document.getElementById('app').style.display = 'none';
+}
+
+function showDashboardGate(){
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('dashboard-gate').style.display = 'block';
+  document.getElementById('dashboard-password').value = '';
+  document.getElementById('dashboard-gate-error').style.display = 'none';
+  document.getElementById('dashboard-password').focus();
+}
+
+function backToLogin(){
+  document.getElementById('dashboard-gate').style.display = 'none';
+  document.getElementById('dashboard-view').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'block';
+}
+
+async function viewDashboard(){
+  const pw = document.getElementById('dashboard-password').value;
+  const errEl = document.getElementById('dashboard-gate-error');
+  errEl.style.display = 'none';
+  try{
+    const res = await api('', {}, 'POST', { action: 'dashboard', password: pw });
+    if (!res.ok){ errEl.textContent = res.error || 'Incorrect password.'; errEl.style.display = 'block'; return; }
+    renderDashboard(res);
+    document.getElementById('dashboard-gate').style.display = 'none';
+    document.getElementById('dashboard-view').style.display = 'block';
+  }catch(e){
+    errEl.textContent = 'Could not reach the server. Check your connection.';
+    errEl.style.display = 'block';
+  }
+}
+
+const STAT_COLORS = {
+  'Total Tasks': 'navy', 'Completed': 'green', 'Pending': 'amber',
+  'In Progress': 'blue', 'Unassigned': 'grey', '% Completed': 'navy',
+  'Date': 'grey', 'Assigned Today': 'blue', 'Completed Today': 'green',
+  'Currently Open': 'amber', 'Overdue (Open)': 'red'
+};
+
+function statTile(label, value){
+  const color = STAT_COLORS[label] || 'navy';
+  return `<div class="stat-tile c-${color}"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div></div>`;
+}
+
+function pctBadgeClass(pctStr){
+  const num = parseFloat(pctStr);
+  if (isNaN(num)) return 'grey';
+  if (num >= 70) return 'green';
+  if (num >= 30) return 'amber';
+  return 'red';
+}
+
+function renderDashboard(data){
+  document.getElementById('dash-overall').innerHTML =
+    Object.keys(data.overall).map(k => statTile(k, data.overall[k])).join('');
+  document.getElementById('dash-daily').innerHTML =
+    Object.keys(data.daily).map(k => statTile(k, data.daily[k])).join('');
+
+  renderDashTable('dash-category', ['Category','Sub-Category','Total','Completed','Pending','% Complete'], data.category);
+  renderDashTable('dash-techlead', ['Tech Lead','Total','Completed','Pending','% Complete'], data.byTechLead);
+  renderTechniciansByLead('dash-technician', data.byTechnician);
+}
+
+function buildDashTableHtml(headers, rows){
+  const pctCol = headers.indexOf('% Complete');
+  let html = '<div class="dash-table-wrap"><table class="dash-table"><thead><tr>' +
+    headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr></thead><tbody>';
+  rows.forEach(r => {
+    html += '<tr>' + r.map((c, i) => {
+      if (i === pctCol) {
+        return `<td><span class="pct-badge pct-${pctBadgeClass(c)}">${escapeHtml(c)}</span></td>`;
+      }
+      return `<td>${escapeHtml(c)}</td>`;
+    }).join('') + '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function renderDashTable(containerId, headers, rows){
+  const el = document.getElementById(containerId);
+  if (!rows || !rows.length){ el.innerHTML = '<div class="empty">No data yet.</div>'; return; }
+  el.innerHTML = buildDashTableHtml(headers, rows);
+}
+
+/** Technician rows come as [Technician, TechLead, Total, Completed, Pending, %Complete].
+ *  Groups them under a subheading per tech lead instead of one long mixed table,
+ *  so each lead's team is visually its own block. */
+function renderTechniciansByLead(containerId, rows){
+  const el = document.getElementById(containerId);
+  if (!rows || !rows.length){ el.innerHTML = '<div class="empty">No data yet.</div>'; return; }
+
+  const groups = new Map();
+  rows.forEach(r => {
+    const lead = r[1] || 'Unassigned';
+    if (!groups.has(lead)) groups.set(lead, []);
+    groups.get(lead).push(r);
+  });
+
+  const leadNames = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b));
+  let html = '';
+  leadNames.forEach(lead => {
+    const teamRows = groups.get(lead).map(r => [r[0], r[2], r[3], r[4], r[5]]); // drop TechLead col, it's the heading now
+    html += `<div class="dash-subgroup">
+      <div class="dash-subtitle"><span>${escapeHtml(lead)}</span><span class="count">${teamRows.length} technician${teamRows.length === 1 ? '' : 's'}</span></div>
+      ${buildDashTableHtml(['Technician','Total','Completed','Pending','% Complete'], teamRows)}
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+async function loadTasks(){
+  const list = document.getElementById('task-list');
+  list.innerHTML = '<div class="empty">Loading tasks…</div>';
+  const res = await api('tasks', { role: SESSION.role, name: SESSION.name });
+  TASKS = res.tasks || [];
+  // Default to the first tab that actually has tasks for this user, so a
+  // technician who only does breakdowns doesn't land on an empty POS tab.
+  const firstWithData = TAB_DEFS.find(t => TASKS.some(task => task.SubCategory === t.key));
+  CURRENT_TAB = (firstWithData || TAB_DEFS[0]).key;
+  renderTabs();
+  renderFilters();
+  renderTasks();
+}
+
+function renderTabs(){
+  const el = document.getElementById('cat-tabs');
+  el.innerHTML = '';
+  TAB_DEFS.forEach(tab=>{
+    const count = TASKS.filter(t=> t.SubCategory === tab.key).length;
+    const btn = document.createElement('button');
+    btn.innerHTML = `<span>${escapeHtml(tab.label)}</span><span class="count">${count}</span>`;
+    if (tab.key === CURRENT_TAB) btn.classList.add('active');
+    btn.onclick = ()=>{ CURRENT_TAB = tab.key; CURRENT_FILTER = 'All'; renderTabs(); renderFilters(); renderTasks(); };
+    el.appendChild(btn);
+  });
+}
+
+function renderFilters(){
+  const statuses = ['All','Unassigned','Pending','In Progress','Completed'];
+  const el = document.getElementById('filters');
+  el.innerHTML = '';
+  statuses.forEach(s=>{
+    const btn = document.createElement('button');
+    btn.textContent = s;
+    if (s === CURRENT_FILTER) btn.classList.add('active');
+    btn.onclick = ()=>{ CURRENT_FILTER = s; renderFilters(); renderTasks(); };
+    el.appendChild(btn);
+  });
+}
+
+function renderTasks(){
+  const list = document.getElementById('task-list');
+  let filtered = TASKS.filter(t=> t.SubCategory === CURRENT_TAB);
+  if (CURRENT_FILTER !== 'All') filtered = filtered.filter(t=> t.Status === CURRENT_FILTER);
+  if (filtered.length === 0){
+    list.innerHTML = '<div class="empty">No tasks here. 🎉</div>';
+    return;
+  }
+  list.innerHTML = '';
+  filtered.forEach(t=>{
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    const statusClass = 'status-' + String(t.Status).replace(/\s+/g,'');
+    const delay = (t.DelayDays !== '' && t.DelayDays !== null && t.Status !== 'Completed' && Number(t.DelayDays) > 3)
+      ? `<span class="delay-flag">${t.DelayDays}d overdue</span>` : `${t.DelayDays ?? 0}d`;
+    card.innerHTML = `
+      <div class="top">
+        <div>
+          <div class="merchant">${escapeHtml(t.MerchantName || '(no name)')}</div>
+          <div class="meta">${escapeHtml(t.SubCategory)} · ${escapeHtml(t.Location || '')}${t.MachineType ? ' · '+escapeHtml(t.MachineType) : ''}</div>
+        </div>
+        <span class="status-chip ${statusClass}">${escapeHtml(t.Status)}</span>
+      </div>
+      <div class="bottom">
+        <span>${escapeHtml(t.TaskID)}${t.Technician ? ' · '+escapeHtml(t.Technician) : ''}</span>
+        <span>${delay}</span>
+      </div>`;
+    card.onclick = ()=> openModal(t);
+    list.appendChild(card);
+  });
+}
+
+function escapeHtml(str){
+  return String(str ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function openModal(task){
+  ACTIVE_TASK = task;
+  document.getElementById('modal-title').textContent = task.MerchantName || task.TaskID;
+  document.getElementById('modal-addr').textContent = task.Address || '';
+  document.getElementById('modal-cat').textContent = task.Category + ' — ' + task.SubCategory;
+  document.getElementById('modal-machine').textContent = task.MachineType || '—';
+  document.getElementById('modal-ref').textContent = task.RefNo || '—';
+  document.getElementById('modal-lead').textContent = task.TechLead || '—';
+  document.getElementById('modal-tech').textContent = task.Technician || 'Unassigned';
+  document.getElementById('notes-input').value = '';
+  document.getElementById('modal-msg').textContent = '';
+
+  // Tech leads can allocate/reallocate a technician on any of their team's tasks.
+  const assignBlock = document.getElementById('assign-block');
+  if (SESSION.role === 'lead'){
+    assignBlock.style.display = 'block';
+    const sel = document.getElementById('assign-select');
+    sel.innerHTML = '<option value="">Choose technician…</option>' +
+      TECH_NAMES.map(n=>`<option value="${n}" ${n===task.Technician?'selected':''}>${n}</option>`).join('');
+  } else {
+    assignBlock.style.display = 'none';
+  }
+
+  const statusOptsEl = document.getElementById('status-options');
+  statusOptsEl.innerHTML = '';
+  ['Pending','In Progress','Completed'].forEach(s=>{
+    const b = document.createElement('button');
+    b.textContent = s;
+    b.type = 'button';
+    if (s === task.Status) b.classList.add('selected');
+    b.onclick = ()=>{
+      document.querySelectorAll('#status-options button').forEach(x=>x.classList.remove('selected'));
+      b.classList.add('selected');
+    };
+    statusOptsEl.appendChild(b);
+  });
+
+  document.getElementById('modal-bg').style.display = 'flex';
+}
+
+function closeModal(){
+  document.getElementById('modal-bg').style.display = 'none';
+  ACTIVE_TASK = null;
+}
+
+async function saveTask(){
+  const selectedBtn = document.querySelector('#status-options button.selected');
+  const status = selectedBtn ? selectedBtn.textContent : ACTIVE_TASK.Status;
+  const notes = document.getElementById('notes-input').value.trim();
+  const msgEl = document.getElementById('modal-msg');
+  msgEl.style.color = 'var(--grey)';
+  msgEl.textContent = 'Saving…';
+
+  // Only send a technician if the lead actually picked one this time —
+  // this is folded into the single 'update' call below, so a save now
+  // costs one round trip instead of two.
+  const assignBlock = document.getElementById('assign-block');
+  let technician;
+  if (assignBlock.style.display !== 'none'){
+    const tech = document.getElementById('assign-select').value;
+    if (tech) technician = tech;
+  }
+
+  try{
+    await api('', {}, 'POST', {
+      action: 'update', rowNum: ACTIVE_TASK.rowNum, status, technician,
+      completedDate: status === 'Completed' ? new Date().toISOString() : undefined,
+      notes: notes || undefined, actor: SESSION.name
+    });
+    msgEl.style.color = 'var(--green)';
+    msgEl.textContent = 'Saved.';
+
+    // Update the row in memory instead of re-fetching every task from the
+    // server. Keeps the list feeling instant after a save.
+    const t = TASKS.find(x => x.rowNum === ACTIVE_TASK.rowNum);
+    if (t){
+      t.Status = status;
+      if (technician) t.Technician = technician;
+      if (status === 'Completed') t.CompletedDate = new Date().toISOString();
+    }
+    setTimeout(()=>{ closeModal(); renderTasks(); }, 400);
+  }catch(e){
+    msgEl.style.color = '#B3261E';
+    msgEl.textContent = 'Could not save. Try again.';
+  }
+}
+</script>
+</body>
+</html>
