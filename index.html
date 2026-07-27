@@ -278,7 +278,9 @@
     <div class="addr" id="modal-addr"></div>
     <div class="field-row"><span>Category:</span><span id="modal-cat"></span></div>
     <div class="field-row"><span>Machine type:</span><span id="modal-machine"></span></div>
-    <div class="field-row"><span>Ref:</span><span id="modal-ref"></span></div>
+    <div class="field-row"><span id="modal-ref-label">Ref:</span><span id="modal-ref"></span></div>
+    <div class="field-row" id="modal-ref2-row" style="display:none;"><span id="modal-ref2-label">SA No:</span><span id="modal-ref2"></span></div>
+    <div class="field-row" id="modal-srid-row" style="display:none;"><span>Trackable SR ID:</span><span id="modal-srid"></span></div>
     <div class="field-row"><span>Tech Lead:</span><span id="modal-lead"></span></div>
     <div class="field-row" id="modal-tech-row"><span>Technician:</span><span id="modal-tech"></span></div>
 
@@ -592,7 +594,39 @@ function openModal(task){
   document.getElementById('modal-addr').textContent = task.Address || '';
   document.getElementById('modal-cat').textContent = task.Category + ' — ' + task.SubCategory;
   document.getElementById('modal-machine').textContent = task.MachineType || '—';
-  document.getElementById('modal-ref').textContent = task.RefNo || '—';
+
+  const sridRow = document.getElementById('modal-srid-row');
+  if (task.TrackableSRID) {
+    document.getElementById('modal-srid').textContent = task.TrackableSRID;
+    sridRow.style.display = 'flex';
+  } else {
+    sridRow.style.display = 'none';
+  }
+
+  // Label the reference field by what it actually is for this task type:
+  // - New Installation (POS) -> TID
+  // - Breakdown under POS (from POS Input's "BD" rows) -> TID Number
+  // - Breakdown under Non-POS (from Breakdown Input tab) -> BR Code
+  // - Service Agreement -> Sale Code + SA No (SA tasks carry the sale code
+  //   in the TaskID itself, e.g. "SA-S-005213", since RefNo holds the SA
+  //   number instead)
+  const ref2Row = document.getElementById('modal-ref2-row');
+  if (task.SubCategory === 'Service Agreement'){
+    const saleCode = String(task.TaskID || '').replace(/^SA-/, '');
+    document.getElementById('modal-ref-label').textContent = 'Sale Code:';
+    document.getElementById('modal-ref').textContent = saleCode || '—';
+    document.getElementById('modal-ref2-label').textContent = 'SA No:';
+    document.getElementById('modal-ref2').textContent = task.RefNo || '—';
+    ref2Row.style.display = 'flex';
+  } else {
+    let refLabel = 'TID:';
+    if (task.SubCategory === 'Breakdown'){
+      refLabel = task.Category === 'Non-POS' ? 'BR Code:' : 'TID Number:';
+    }
+    document.getElementById('modal-ref-label').textContent = refLabel;
+    document.getElementById('modal-ref').textContent = task.RefNo || '—';
+    ref2Row.style.display = 'none';
+  }
   document.getElementById('modal-lead').textContent = task.TechLead || '—';
   document.getElementById('modal-tech').textContent = task.Technician || 'Unassigned';
   document.getElementById('notes-input').value = '';
