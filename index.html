@@ -16,6 +16,10 @@
     --grey-bg:#EEF0F2;
     --blue:#2361A6;
     --blue-bg:#E3EDF7;
+    --workshop:#6B4FA0;
+    --workshop-bg:#EDE7F6;
+    --escalate:#B3261E;
+    --escalate-bg:#FBE4E1;
     --paper:#F6F5F1;
     --ink:#152431;
     --line:#DADFE3;
@@ -115,7 +119,9 @@
   .status-Pending{background:var(--amber-bg); color:var(--amber);}
   .status-Completed{background:var(--green-bg); color:var(--green);}
   .status-Unassigned{background:var(--grey-bg); color:var(--grey);}
-  .status-InProgress{background:var(--blue-bg); color:var(--blue);}
+  .status-InProgress{background:var(--blue-bg); color:var(--blue);} /* legacy — old rows only, no longer assignable */
+  .status-NeedWorkshopAttention{background:var(--workshop-bg); color:var(--workshop);}
+  .status-NeedFurtherAttention{background:var(--escalate-bg); color:var(--escalate);}
   .task-card .bottom{display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:var(--grey);}
   .delay-flag{color:#B3261E; font-weight:700;}
 
@@ -230,7 +236,7 @@
 
       <div class="dash-card">
         <div class="dash-section-title"><span class="swatch"></span>Today</div>
-        <div class="dash-hint">Refreshes automatically every ~10 minutes.</div>
+        <div class="dash-hint">Live — refreshes automatically while this screen is open.</div>
         <div class="stat-grid" id="dash-daily"></div>
       </div>
     </div>
@@ -332,12 +338,27 @@ let SESSION = null; // {role, name, techLead/locations}
 let TASKS = [];
 let CURRENT_FILTER = 'All';
 
+/* Live-refresh: both the task list and the dashboard poll the Apps
+   Script backend on this interval while their view is open, so new
+   syncs from the input tabs (and dashboard changes) show up without
+   the user having to log out/in or re-enter the password. Kept quiet
+   (no loading spinner) and skipped while hidden/backgrounded or while
+   a task modal is open, so it never yanks something out from under an
+   active edit. Tune this up if the team grows large enough to worry
+   about Apps Script execution quotas. */
+const POLL_INTERVAL_MS = 20000;
+let TASK_POLL_TIMER = null;
+let DASH_POLL_TIMER = null;
+let DASH_PASSWORD_CACHE = null; // kept in memory only, never persisted
+
 /* Tabs split tasks by SubCategory so POS installs, breakdowns, and service
    agreements don't all sit in one long mixed list. Keyed on the exact
    SubCategory value coming from the sheet — update here if a SubCategory
    name changes or a new one is added. */
 const TAB_DEFS = [
-  { key: 'New Installation', label: 'POS' },
+  { key: 'New Installation', label: 'POS Courier' },
+  { key: 'Field Visit', label: 'POS Field Visit' },
+  { key: 'Field Transfer', label: 'POS Field Transfer' },
   { key: 'Breakdown', label: 'Breakdown' },
   { key: 'Service Agreement', label: 'Service Agreements' }
 ];
@@ -398,6 +419,7 @@ async function doLogin(){
 }
 
 function logout(){
+  stopTaskPolling();
   SESSION = null; TASKS = [];
   document.getElementById('login-screen').style.display = 'block';
   document.getElementById('app').style.display = 'none';
@@ -412,6 +434,8 @@ function showDashboardGate(){
 }
 
 function backToLogin(){
+  stopDashPolling();
+  DASH_PASSWORD_CACHE = null;
   document.getElementById('dashboard-gate').style.display = 'none';
   document.getElementById('dashboard-view').style.display = 'none';
   document.getElementById('login-screen').style.display = 'block';
@@ -424,12 +448,39 @@ async function viewDashboard(){
   try{
     const res = await api('', {}, 'POST', { action: 'dashboard', password: pw });
     if (!res.ok){ errEl.textContent = res.error || 'Incorrect password.'; errEl.style.display = 'block'; return; }
+    DASH_PASSWORD_CACHE = pw;
     renderDashboard(res);
     document.getElementById('dashboard-gate').style.display = 'none';
     document.getElementById('dashboard-view').style.display = 'block';
+    startDashPolling();
   }catch(e){
     errEl.textContent = 'Could not reach the server. Check your connection.';
     errEl.style.display = 'block';
+  }
+}
+
+function startDashPolling(){
+  stopDashPolling();
+  DASH_POLL_TIMER = setInterval(refreshDashboardSilently, POLL_INTERVAL_MS);
+}
+
+function stopDashPolling(){
+  if (DASH_POLL_TIMER){ clearInterval(DASH_POLL_TIMER); DASH_POLL_TIMER = null; }
+}
+
+/* Re-fetches dashboard data quietly and re-renders in place. Reuses the
+   password already entered this session — nothing is written to
+   localStorage/sessionStorage, so it's gone as soon as the tab closes
+   or the user hits Close. */
+async function refreshDashboardSilently(){
+  if (!DASH_PASSWORD_CACHE) return;
+  if (document.getElementById('dashboard-view').style.display === 'none') return;
+  if (document.visibilityState !== 'visible') return;
+  try{
+    const res = await api('', {}, 'POST', { action: 'dashboard', password: DASH_PASSWORD_CACHE });
+    if (res.ok) renderDashboard(res);
+  }catch(e){
+    // silent — the next poll will just retry
   }
 }
 
@@ -524,7 +575,45 @@ async function loadTasks(){
   renderTabs();
   renderFilters();
   renderTasks();
+  startTaskPolling();
 }
+
+function startTaskPolling(){
+  stopTaskPolling();
+  TASK_POLL_TIMER = setInterval(refreshTasksSilently, POLL_INTERVAL_MS);
+}
+
+function stopTaskPolling(){
+  if (TASK_POLL_TIMER){ clearInterval(TASK_POLL_TIMER); TASK_POLL_TIMER = null; }
+}
+
+/* Re-fetches the task list in the background and re-renders the current
+   tab/filter in place. Skipped while a task modal is open (so a poll
+   can't close it or overwrite the assign dropdown mid-edit — the next
+   poll after the modal closes will pick up any changes) and while the
+   tab is hidden, to keep this to one small request per interval. */
+async function refreshTasksSilently(){
+  if (!SESSION) return;
+  if (document.getElementById('app').style.display === 'none') return;
+  if (document.visibilityState !== 'visible') return;
+  if (document.getElementById('modal-bg').style.display === 'flex') return;
+  try{
+    const res = await api('tasks', { role: SESSION.role, name: SESSION.name });
+    TASKS = res.tasks || [];
+    renderTabs();
+    renderTasks();
+  }catch(e){
+    // silent — the next poll will just retry
+  }
+}
+
+/* Catch up immediately when the user switches back to this tab/app,
+   rather than waiting out the rest of the current interval. */
+document.addEventListener('visibilitychange', ()=>{
+  if (document.visibilityState !== 'visible') return;
+  if (SESSION && document.getElementById('app').style.display !== 'none') refreshTasksSilently();
+  if (DASH_PASSWORD_CACHE && document.getElementById('dashboard-view').style.display !== 'none') refreshDashboardSilently();
+});
 
 function renderTabs(){
   const el = document.getElementById('cat-tabs');
@@ -540,7 +629,7 @@ function renderTabs(){
 }
 
 function renderFilters(){
-  const statuses = ['All','Unassigned','Pending','In Progress','Completed'];
+  const statuses = ['All','Unassigned','Pending','Need Workshop Attention','Need Further Attention','In Progress','Completed'];
   const el = document.getElementById('filters');
   el.innerHTML = '';
   statuses.forEach(s=>{
@@ -645,7 +734,10 @@ function openModal(task){
 
   const statusOptsEl = document.getElementById('status-options');
   statusOptsEl.innerHTML = '';
-  ['Pending','In Progress','Completed'].forEach(s=>{
+  // If this is an older task still sitting at 'In Progress' (no longer a
+  // pickable option), it just won't show any button pre-selected here —
+  // saving without touching Status leaves it exactly as-is (see saveTask).
+  ['Pending','Need Workshop Attention','Need Further Attention','Completed'].forEach(s=>{
     const b = document.createElement('button');
     b.textContent = s;
     b.type = 'button';
@@ -684,8 +776,8 @@ async function saveTask(){
   }
 
   try{
-    await api('', {}, 'POST', {
-      action: 'update', rowNum: ACTIVE_TASK.rowNum, status, technician,
+    const result = await api('', {}, 'POST', {
+      action: 'update', rowNum: ACTIVE_TASK.rowNum, sheet: ACTIVE_TASK.sheet, status, technician,
       completedDate: status === 'Completed' ? new Date().toISOString() : undefined,
       notes: notes || undefined, actor: SESSION.name
     });
@@ -694,11 +786,19 @@ async function saveTask(){
 
     // Update the row in memory instead of re-fetching every task from the
     // server. Keeps the list feeling instant after a save.
-    const t = TASKS.find(x => x.rowNum === ACTIVE_TASK.rowNum);
+    const t = TASKS.find(x => x.rowNum === ACTIVE_TASK.rowNum && x.sheet === ACTIVE_TASK.sheet);
     if (t){
       t.Status = status;
       if (technician) t.Technician = technician;
       if (status === 'Completed') t.CompletedDate = new Date().toISOString();
+      // The backend moves a task between the Tasks sheet and the
+      // Completed Jobs archive whenever its status crosses the
+      // Completed boundary — keep rowNum/sheet in sync so a second
+      // edit in the same session still targets the right sheet/row.
+      if (result && result.moved){
+        t.rowNum = result.newRowNum;
+        t.sheet = result.newSheet;
+      }
     }
     setTimeout(()=>{ closeModal(); renderTasks(); }, 400);
   }catch(e){
