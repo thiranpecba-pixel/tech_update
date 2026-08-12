@@ -124,6 +124,21 @@
   .status-NeedFurtherAttention{background:var(--escalate-bg); color:var(--escalate);}
   .task-card .bottom{display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:var(--grey);}
   .delay-flag{color:#B3261E; font-weight:700;}
+  .task-card .ref-row{
+    display:flex; align-items:center; gap:6px; margin-top:8px;
+    font-size:12.5px; color:var(--navy-2);
+  }
+  .task-card .ref-row .ref-label{color:var(--grey); font-weight:600;}
+  .task-card .ref-row .ref-value{font-weight:700; letter-spacing:.2px;}
+  .task-card .copy-btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:6px; border:1px solid var(--line);
+    background:var(--grey-bg); color:var(--grey); cursor:pointer; flex-shrink:0;
+    padding:0;
+  }
+  .task-card .copy-btn:hover{background:var(--blue-bg); color:var(--blue); border-color:var(--blue);}
+  .task-card .copy-btn.copied{background:var(--green-bg); color:var(--green); border-color:var(--green);}
+  .task-card .copy-btn svg{width:12px; height:12px; pointer-events:none;}
 
   .empty{text-align:center; color:var(--grey); padding:60px 20px; font-size:14px;}
 
@@ -714,6 +729,14 @@ function renderTasks(){
       const statusClass = 'status-' + String(t.Status).replace(/\s+/g,'');
       const delay = (t.DelayDays !== '' && t.DelayDays !== null && t.Status !== 'Completed' && Number(t.DelayDays) > 3)
         ? `<span class="delay-flag">${t.DelayDays}d overdue</span>` : `${t.DelayDays ?? 0}d`;
+      const ref = getTaskRef(t);
+      const refRow = ref.value
+        ? `<div class="ref-row">
+             <span class="ref-label">${escapeHtml(ref.label)}:</span>
+             <span class="ref-value">${escapeHtml(ref.value)}</span>
+             <button type="button" class="copy-btn" title="Copy ${escapeHtml(ref.label)}">${copyIconSvg()}</button>
+           </div>`
+        : '';
       card.innerHTML = `
         <div class="top">
           <div>
@@ -722,16 +745,72 @@ function renderTasks(){
           </div>
           <span class="status-chip ${statusClass}">${escapeHtml(t.Status)}</span>
         </div>
+        ${refRow}
         <div class="bottom">
           <span>${escapeHtml(t.TaskID)}${t.Technician ? ' · '+escapeHtml(t.Technician) : ''}</span>
           <span>${delay}</span>
         </div>`;
+      const copyBtn = card.querySelector('.copy-btn');
+      if (copyBtn){
+        copyBtn.onclick = (e)=>{
+          e.stopPropagation(); // don't open the modal when copying
+          copyRefToClipboard(copyBtn, ref.value);
+        };
+      }
       card.onclick = ()=> openModal(t);
       groupEl.appendChild(card);
     });
 
     list.appendChild(groupEl);
   });
+}
+
+// Returns { label, value } for a task's primary reference number,
+// matching the same rules used in the modal:
+// - Service Agreement -> Sale Code (parsed from TaskID)
+// - Breakdown, Non-POS -> BR Code
+// - Breakdown, POS -> TID Number
+// - everything else (New Installation, Field Visit/Transfer) -> TID
+function getTaskRef(t){
+  if (t.SubCategory === 'Service Agreement'){
+    const saleCode = String(t.TaskID || '').replace(/^SA-/, '');
+    return { label: 'Sale Code', value: saleCode || '' };
+  }
+  let label = 'TID';
+  if (t.SubCategory === 'Breakdown'){
+    label = t.Category === 'Non-POS' ? 'BR Code' : 'TID Number';
+  }
+  return { label, value: t.RefNo || '' };
+}
+
+function copyIconSvg(){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+}
+
+function checkIconSvg(){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+}
+
+async function copyRefToClipboard(btn, value){
+  try{
+    await navigator.clipboard.writeText(value);
+  }catch(e){
+    // Fallback for older/embedded webviews without clipboard API support
+    const ta = document.createElement('textarea');
+    ta.value = value;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try{ document.execCommand('copy'); }catch(err){}
+    document.body.removeChild(ta);
+  }
+  btn.classList.add('copied');
+  btn.innerHTML = checkIconSvg();
+  setTimeout(()=>{
+    btn.classList.remove('copied');
+    btn.innerHTML = copyIconSvg();
+  }, 1200);
 }
 
 function escapeHtml(str){
