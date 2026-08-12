@@ -589,11 +589,19 @@ function renderTechniciansByLead(containerId, rows){
   el.innerHTML = html;
 }
 
+// Backend sends the ref number under the key 'RefNo (TID/SaleCode)'
+// (matches the Tasks sheet's header text exactly). The rest of the app
+// reads the simpler task.RefNo, so normalize it once right after fetch.
+function normalizeTask(t){
+  t.RefNo = t['RefNo (TID/SaleCode)'];
+  return t;
+}
+
 async function loadTasks(){
   const list = document.getElementById('task-list');
   list.innerHTML = '<div class="empty">Loading tasks…</div>';
   const res = await api('tasks', { role: SESSION.role, name: SESSION.name });
-  TASKS = res.tasks || [];
+  TASKS = (res.tasks || []).map(normalizeTask);
   // Default to the first tab that actually has tasks for this user, so a
   // technician who only does breakdowns doesn't land on an empty POS tab.
   const firstWithData = TAB_DEFS.find(t => TASKS.some(task => task.SubCategory === t.key));
@@ -625,7 +633,7 @@ async function refreshTasksSilently(){
   if (document.getElementById('modal-bg').style.display === 'flex') return;
   try{
     const res = await api('tasks', { role: SESSION.role, name: SESSION.name });
-    TASKS = res.tasks || [];
+    TASKS = (res.tasks || []).map(normalizeTask);
     renderTabs();
     renderTasks();
   }catch(e){
