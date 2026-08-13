@@ -773,6 +773,10 @@ function renderTasks(){
 // - everything else (New Installation, Field Visit/Transfer) -> TID
 function getTaskRef(t){
   if (t.SubCategory === 'Service Agreement'){
+    // Show the machine's Serial number on the card. Falls back to Sale
+    // Code (parsed from TaskID) for older rows synced before Serial
+    // was tracked, so the card never shows a blank value.
+    if (t.Serial) return { label: 'Serial', value: t.Serial };
     const saleCode = String(t.TaskID || '').replace(/^SA-/, '');
     return { label: 'Sale Code', value: saleCode || '' };
   }
@@ -866,8 +870,17 @@ function openModal(task){
   if (SESSION.role === 'lead'){
     assignBlock.style.display = 'block';
     const sel = document.getElementById('assign-select');
+    // Leads can allocate a technician OR do the job themself — include
+    // the logged-in lead's own name (labeled "(Myself)") at the top of
+    // the list alongside the regular technician roster, so a lead
+    // working a job solo can still pick a real name here instead of
+    // leaving Technician blank (which would otherwise leave the task
+    // stuck showing "Unassigned" — Status is derived purely from
+    // whether Technician is filled, see mapPosRow/mapBreakdownRow/etc
+    // in Code.gs).
+    const options = [SESSION.name, ...TECH_NAMES.filter(n => n !== SESSION.name)];
     sel.innerHTML = '<option value="">Choose technician…</option>' +
-      TECH_NAMES.map(n=>`<option value="${n}" ${n===task.Technician?'selected':''}>${n}</option>`).join('');
+      options.map(n=>`<option value="${n}" ${n===task.Technician?'selected':''}>${n===SESSION.name ? n + ' (Myself)' : n}</option>`).join('');
   } else {
     assignBlock.style.display = 'none';
   }
