@@ -91,6 +91,24 @@
   }
   .filters button.active{background:var(--navy); color:#fff; border-color:var(--navy);}
 
+  .search-bar{position:relative; margin:14px 0 0;}
+  .search-bar .search-icon{
+    position:absolute; left:11px; top:50%; transform:translateY(-50%);
+    width:16px; height:16px; color:var(--grey); pointer-events:none;
+  }
+  .search-bar input{
+    width:100%; padding:10px 34px 10px 34px; border:1px solid var(--line); border-radius:10px;
+    font-size:14.5px; background:#fff; color:var(--ink); font-family:inherit;
+  }
+  .search-bar input:focus{outline:none; border-color:var(--navy-2);}
+  .search-bar .search-clear{
+    position:absolute; right:6px; top:50%; transform:translateY(-50%);
+    border:none; background:transparent; color:var(--grey); font-size:15px;
+    line-height:1; cursor:pointer; padding:6px 7px; border-radius:6px;
+  }
+  .search-bar .search-clear:active{background:var(--grey-bg);}
+  .search-mode-banner{font-size:12.5px; color:var(--grey); padding:12px 2px 8px;}
+
   .tabs{display:flex; gap:6px; overflow-x:auto; padding:14px 0 0; -webkit-overflow-scrolling:touch; border-bottom:1px solid var(--line);}
   .tabs button{
     flex:0 0 auto; border:none; background:transparent; color:var(--grey);
@@ -295,6 +313,11 @@
     <button class="logout" onclick="logout()">Log out</button>
   </header>
   <main>
+    <div class="search-bar">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input type="text" id="search-input" placeholder="Search jobs — merchant, TID, location, technician…" oninput="onSearchInput()" autocomplete="off">
+      <button type="button" class="search-clear" id="search-clear" onclick="clearSearch()" style="display:none;" aria-label="Clear search">✕</button>
+    </div>
     <div class="tabs" id="cat-tabs"></div>
     <div class="filters" id="filters"></div>
     <div id="task-list"></div>
@@ -368,6 +391,17 @@ async function loadNames(){
 let SESSION = null; // {role, name, techLead/locations}
 let TASKS = [];
 let CURRENT_FILTER = 'All';
+
+/* Free-text search across a tech/lead's own job list (whatever getTasks
+   already scoped to them server-side — search never reaches beyond
+   that). While a query is active it takes over from the tab/status
+   filters entirely, searching every job the user can see regardless of
+   SubCategory or Status, since a tech hunting for "that job in
+   Kandy" doesn't want to have to guess which tab it's filed under
+   first. Clearing the box (the ✕ button, or emptying the field)
+   returns to normal tab/filter browsing exactly where it left off. */
+let SEARCH_QUERY = '';
+let SEARCH_DEBOUNCE_TIMER = null;
 
 /* Live-refresh: both the task list and the dashboard poll the Apps
    Script backend on this interval while their view is open, so new
@@ -453,6 +487,11 @@ async function doLogin(){
 function logout(){
   stopTaskPolling();
   SESSION = null; TASKS = [];
+  SEARCH_QUERY = '';
+  const searchInput = document.getElementById('search-input');
+  if (searchInput) searchInput.value = '';
+  const searchClear = document.getElementById('search-clear');
+  if (searchClear) searchClear.style.display = 'none';
   document.getElementById('login-screen').style.display = 'block';
   document.getElementById('app').style.display = 'none';
 }
@@ -664,6 +703,44 @@ document.addEventListener('visibilitychange', ()=>{
   if (DASH_PASSWORD_CACHE && document.getElementById('dashboard-view').style.display !== 'none') refreshDashboardSilently();
 });
 
+/* Debounced so fast typing doesn't re-render the whole list on every
+   keystroke. 150ms is snappy enough to feel live while still coalescing
+   normal typing speed into one render. */
+function onSearchInput(){
+  const val = document.getElementById('search-input').value;
+  document.getElementById('search-clear').style.display = val ? '' : 'none';
+  clearTimeout(SEARCH_DEBOUNCE_TIMER);
+  SEARCH_DEBOUNCE_TIMER = setTimeout(()=>{
+    SEARCH_QUERY = val;
+    renderTasks();
+  }, 150);
+}
+
+function clearSearch(){
+  clearTimeout(SEARCH_DEBOUNCE_TIMER);
+  SEARCH_QUERY = '';
+  const input = document.getElementById('search-input');
+  input.value = '';
+  document.getElementById('search-clear').style.display = 'none';
+  renderTasks();
+  input.focus();
+}
+
+/* Matches a task against a (already-lowercased) query across every
+   field a tech/lead is likely to remember a job by — merchant/customer
+   name, the ref number however it's labeled for that job type, TaskID,
+   location/address, who it's assigned to, machine type, serial, and
+   notes. Substring match, not exact, so "kandy" finds "Kandy Road" and
+   a partial TID/name still turns up results. */
+function taskMatchesSearch(t, q){
+  const haystacks = [
+    t.TaskID, t.MerchantName, t.RefNo, t.Location, t.Address,
+    t.TechLead, t.Technician, t.MachineType, t['Bank/Customer'],
+    t.Serial, t.TrackableSRID, t.Notes, t.SubCategory, t.Category
+  ];
+  return haystacks.some(v => String(v || '').toLowerCase().includes(q));
+}
+
 function renderTabs(){
   const el = document.getElementById('cat-tabs');
   el.innerHTML = '';
@@ -692,10 +769,29 @@ function renderFilters(){
 
 function renderTasks(){
   const list = document.getElementById('task-list');
-  let filtered = TASKS.filter(t=> t.SubCategory === CURRENT_TAB);
-  if (CURRENT_FILTER !== 'All') filtered = filtered.filter(t=> t.Status === CURRENT_FILTER);
+  const tabsEl = document.getElementById('cat-tabs');
+  const filtersEl = document.getElementById('filters');
+  const q = SEARCH_QUERY.trim().toLowerCase();
+  const searching = q.length > 0;
+
+  // Search takes over from the tab/status filters entirely (searching
+  // across every job the user can see), so hide those controls rather
+  // than leave them sitting there implying they still apply.
+  tabsEl.style.display = searching ? 'none' : '';
+  filtersEl.style.display = searching ? 'none' : '';
+
+  let filtered;
+  if (searching){
+    filtered = TASKS.filter(t=> taskMatchesSearch(t, q));
+  } else {
+    filtered = TASKS.filter(t=> t.SubCategory === CURRENT_TAB);
+    if (CURRENT_FILTER !== 'All') filtered = filtered.filter(t=> t.Status === CURRENT_FILTER);
+  }
+
   if (filtered.length === 0){
-    list.innerHTML = '<div class="empty">No tasks here. 🎉</div>';
+    list.innerHTML = searching
+      ? `<div class="empty">No jobs match "${escapeHtml(SEARCH_QUERY.trim())}".</div>`
+      : '<div class="empty">No tasks here. 🎉</div>';
     return;
   }
 
@@ -715,6 +811,12 @@ function renderTasks(){
   });
 
   list.innerHTML = '';
+  if (searching){
+    const banner = document.createElement('div');
+    banner.className = 'search-mode-banner';
+    banner.textContent = `${filtered.length} job${filtered.length === 1 ? '' : 's'} match "${SEARCH_QUERY.trim()}"`;
+    list.appendChild(banner);
+  }
   sortedLocations.forEach(loc=>{
     const tasksInLoc = groups.get(loc).slice().sort((a, b)=>
       String(a.MerchantName || '').localeCompare(String(b.MerchantName || '')));
