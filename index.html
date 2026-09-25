@@ -1038,12 +1038,15 @@ async function saveTask(){
   }
 
   try{
-    if (!result || result.ok === false) {
-      msgEl.style.color = '#B3261E';
-      msgEl.textContent = 'Error: ' + (result && result.error ? result.error : 'Unknown error');
-      console.error('Update failed:', result);
-      return;
-    }
+    const result = await api('', {}, 'POST', {
+      action: 'update', rowNum: ACTIVE_TASK.rowNum, sheet: ACTIVE_TASK.sheet, status, technician,
+      // No completedDate sent from here on purpose — the server stamps
+      // it with its own clock, in the spreadsheet's timezone. Sending
+      // the browser's UTC ISO string was getting written into the sheet
+      // as text and could show several hours (or a whole calendar day)
+      // off from the real local time.
+      notes: notes || undefined, actor: SESSION.name
+    });
     msgEl.style.color = 'var(--green)';
     msgEl.textContent = 'Saved.';
 
